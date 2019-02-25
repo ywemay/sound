@@ -1,0 +1,24 @@
+.sound-recorder-btn.record{
+  background: url(recording.png) no-repeat;
+}
+.sound-recorder-btn.recording {
+  background-position-y: -23px;
+}
+
+.sound-recorder-btn.play{
+  background: url(play.png) no-repeat;
+}
+.sound-recorder-btn.playing {
+  background-position-y: -23px;
+}
+.sound-recorder-btn.delete{
+  background: url(delete.png) no-repeat;
+}
+.sound-recorder-btn {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  background-position-y: 0;
+  margin: 2pt 3pt;
+}
+

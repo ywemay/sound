@@ -1,0 +1,214 @@
+<?php
+
+define('SOUND_UNIQUE', -2);
+
+/**
+ * Function sound_permission().
+ */
+function sound_permission() {
+  return array(
+    'sound upload' => array(
+      'title' => t('Upload sound files recorded in the browser'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function sound_menu() {
+  $items = array();
+
+  $items['sound/upload/temp'] = array(
+    'description' => 'Upload recorded in the browser file into a temporary file on server',
+    'page callback' => 'sound_upload_audiofile',
+    'access arguments' => array('sound upload'),
+  );
+
+  return $items;
+}
+
+/**
+ * Function sound_upload_audiofile().
+ */
+function sound_upload_audiofile() {
+  $outdir = 'temporary://';
+  if (!empty($_FILES) && isset($_FILES['audiofile'])) {
+    $f = (object) $_FILES['audiofile'];
+    $outFname = $outdir . '/' . $f->name;
+    $success = copy($f->tmp_name, $outFname);
+  }
+}
+
+/**
+ * Implements hook_element_info().
+ *
+ * The managed sound element may be used anywhere in Drupal.
+ */
+function sound_element_info() {
+  $sound_path = drupal_get_path('module', 'sound');
+
+  $ftypes = file_element_info();
+  $k = 'managed_sound_file';
+  $types[$k] = $ftypes['managed_file'];
+  $types[$k]['#process'] = array('sound_managed_file_process');
+  $types[$k]['#recording_file_name'] = SOUND_UNIQUE;
+  $types[$k]['#file_value_callbacks'] = array('sound_value_callback');
+  $types[$k]['#attached']['css'][] = $sound_path . '/sound.css';
+  $types[$k]['#attached']['js'][] = $sound_path . '/sound.js';
+  return $types;
+}
+
+/**
+ * Invoke hook_theme().
+ */
+function sound_theme() {
+  return array(
+    'sound_widget' => array(
+      'render element' => 'element',
+    ),
+    'sound_managed_file' => array(
+      'render element' => 'element',
+    ),
+  );
+}
+
+/**
+ * Process function to expand the managed_file element type.
+ *
+ * Expands the sound type to include Upload and Remove buttons, as well as
+ * support for a default value.
+ */
+function sound_managed_file_process($element, &$form_state, $form) {
+  $element = file_managed_file_process($element, $form_state, $form);
+
+  $modpath = drupal_get_path('module', 'sound');
+  drupal_add_js($modpath . '/sound.js');
+  drupal_add_css($modpath . '/css/sound-style.css');
+
+  $tempname = drupal_tempnam('temporary://', 'sound_');
+ 
+  //file_directory_temp();
+  $element['recorder'] = array(
+    '#type' => 'container',
+    '#prefix' => '<div class="sound-recorder" data:file_name="'
+      . basename($tempname) . '">',
+    '#suffox' => '</div>',
+
+  );
+
+  $element['recorder']['buttons'] = array(
+    '#markup' => 
+      '<div class="sound-recorder-btn record"></div>' .
+      '<div class="sound-recorder-btn play"></div>' .
+      '<div class="sound-recorder-btn delete"></div>',
+  );
+
+  $element['recorder']['tempname'] = array(
+    '#type' => 'hidden',
+    '#default_value' =>  basename($tempname),
+    '#attributes' => array(
+      'class' => array('sound-recorder-tempname'),
+    ),
+  );
+
+  return $element;
+}
+
+/**
+ * Function sound_value_callback().
+ */
+function sound_value_callback($element, &$input, $form_state) {
+  $tempname = 'temporary://' . $input['recorder']['tempname'] . '.ogg';
+  if (!file_exists($tempname)) {
+    return;
+  }
+
+  global $user;
+
+  $destination = isset($element['#upload_location']) ? $element['#upload_location'] : file_default_scheme() . '://';
+  if (isset($destination) && !file_prepare_directory($destination, FILE_CREATE_DIRECTORY)) {
+    watchdog('sound', 'The upload directory %directory for the file field !name could not be created or is not accessible. A newly uploaded file could not be saved in this directory as a consequence, and the upload was canceled.', array('%directory' => $destination, '!name' => $element['#field_name']));
+    form_set_error($upload_name, t('The file could not be uploaded.'));
+    return FALSE;
+  }
+
+  $ext = 'ogg';
+  if ($element['#recording_file_name'] != SOUND_UNIQUE) {
+    if (preg_match("/^(.*?)\.(ogg|mp3)$/", $element['#recording_file_name'], $mt)) {
+      $ext = $mt[2];
+      $basename = $mt[1];
+    }
+  }
+  else {
+    $basename = basename($input['recorder']['tempname']);
+  }
+
+
+  $rez = shell_exec('ffmpeg 2>&1');
+  // if ffmped command line utility available - convert file to mp3
+  if (preg_match("/^ffmpeg version/", $rez) && $ext == 'mp3') {
+    $mp3name = drupal_realpath('temporary://') . $input['recorder']['tempname'] . '.mp3';
+    $oogname = drupal_realpath($tempname);
+    $options = '-vn -ar 22050 -ac 2 -ab 45k -f mp3';
+    $cmd = 'ffmpeg -i "' . $oggname . '" ' . $options . ' "' . $mp3name .'"';
+    `$cmd`;
+    chmod($mp3name, 0777);
+    if (file_exists($mp3Name)) {
+      unlink($oggname);
+      $tempname = 'temporary://' . $input['recorder']['tempname'] . '.mp3';
+    }
+  }
+
+  if ($uri = file_unmanaged_move($tempname, $destination . '/' . $basename . '.' . $ext)) {
+    $file = new stdClass();
+    $file->fid = NULL;
+    $file->uri = $uri;
+    $file->filename = drupal_basename($uri);
+    $file->filemime = file_get_mimetype($file->uri);
+    $file->uid = $user->uid;
+    $file->status = FILE_STATUS_PERMANENT;
+
+     // If we are replacing an existing file re-use its database record.
+    $existing_files = file_load_multiple(array(), array(
+      'uri' => $uri,
+    ));
+    if (count($existing_files)) {
+      $existing = reset($existing_files);
+      $file->fid = $existing->fid;
+      $file->filename = $existing->filename;
+    }
+    file_save($file);
+    $input['fid'] = $file->fid;
+  }
+}
+
+/**
+ * Returns HTML for a managed file element.
+ *
+ * @param $variables
+ *   An associative array containing:
+ *   - element: A render element representing the file.
+ *
+ * @ingroup themeable
+ */
+function theme_sound_managed_file($variables) {
+  $element = $variables['element'];
+
+  $attributes = array();
+  if (isset($element['#id'])) {
+    $attributes['id'] = $element['#id'];
+  }
+  if (!empty($element['#attributes']['class'])) {
+    $attributes['class'] = (array) $element['#attributes']['class'];
+  }
+  $attributes['class'][] = 'form-managed-file';
+
+  // This wrapper is required to apply JS behaviors and CSS styling.
+  $output = '';
+  $output .= '<div' . drupal_attributes($attributes) . '>';
+  $output .= drupal_render_children($element);
+  $output .= '</div>';
+  return $output;
+}
+

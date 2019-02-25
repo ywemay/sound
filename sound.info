@@ -1,0 +1,6 @@
+name = Sound Field
+description = Field that allows to record and play sound
+core = 7.x
+package = Fields
+
+dependencies[] = file
