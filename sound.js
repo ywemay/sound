@@ -6,6 +6,20 @@
       if (!$('#sound_upload_form').length) {
         $('body').append('<form id="sound_upload_form"></form>');
       }
+
+
+      $('.sound-recorder-btn.delete').mouseup(function() {
+        var cRecorder = jQuery(this).closest('.sound-recorder');
+        var fName = cRecorder.attr('data:file_name');
+
+        jQuery.get(Drupal.settings.basePath + 'sound/delete/recording/' + fName,  { token: Math.floor(Math.random() * 1000)}, function(response){
+          if(response.status == 1) {
+            console.log('append hidden class to .play and .delete');
+            cRecorder.find('.play, .delete').addClass('hidden');
+          }
+          console.log(response);
+        });
+      });
     },
     detach: function (context, settings) {
     }
@@ -30,7 +44,6 @@
       var recorderBlock;
 
       jQuery('.sound-recorder-btn.record').mouseup(function() {
-
 
         if (jQuery('.recording').length > 0) {
           if (jQuery(this).hasClass('recording')) {
@@ -63,6 +76,18 @@
         oReq.onload = function(oEvent) {
           if (oReq.status == 200) {
             recorderBlock.find('.play, .delete').removeClass('hidden');
+            var audio;
+            recorderBlock.find('.play').mouseup(function() {
+              var blobUrl = URL.createObjectURL(blob);
+              audio = new Audio(blobUrl);
+              audio.play();
+              var playingBlock = $(this);
+              $(this).addClass('playing');
+              audio.addEventListener('ended', function() {
+                playingBlock.removeClass('playing');
+              });
+            });
+
           } else {
             console.log("Error " + oReq.status + " occurred when trying to upload your file.");
           }

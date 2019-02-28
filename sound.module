@@ -25,7 +25,28 @@ function sound_menu() {
     'access arguments' => array('sound upload'),
   );
 
+  $items['sound/delete/recording/%'] = array(
+    'page callback' => 'sound_delete_recording_callback',
+    'page arguments' => array(3),
+    'access arguments' => array('sound upload'),
+    'type' => MENU_CALLBACK,
+  );
+  
   return $items;
+}
+
+/**
+ * Function sound_delete_recording_callback().
+ */
+function sound_delete_recording_callback($fname) {
+  $fname = 'temporary://' . $fname . '.ogg';
+  $success = 1;
+  if (file_exists($fname)) {
+    if (unlink($fname)) {
+      $success = 1;
+    }
+  }
+  drupal_json_output(array('status' => $success));
 }
 
 /**
@@ -97,11 +118,13 @@ function sound_managed_file_process($element, &$form_state, $form) {
 
   );
 
+  $hide = file_exists($tempname) ? '' : ' hidden';
+
   $element['recorder']['buttons'] = array(
     '#markup' => 
       '<div class="sound-recorder-btn record"></div>' .
-      '<div class="sound-recorder-btn play"></div>' .
-      '<div class="sound-recorder-btn delete"></div>',
+      '<div class="sound-recorder-btn play' . $hide . '"></div>' .
+      '<div class="sound-recorder-btn delete' . $hide . '"></div>' ,
   );
 
   $element['recorder']['tempname'] = array(
@@ -167,7 +190,7 @@ function sound_value_callback($element, &$input, $form_state) {
     $file->filename = drupal_basename($uri);
     $file->filemime = file_get_mimetype($file->uri);
     $file->uid = $user->uid;
-    $file->status = FILE_STATUS_PERMANENT;
+    $file->status = 0;
 
      // If we are replacing an existing file re-use its database record.
     $existing_files = file_load_multiple(array(), array(
